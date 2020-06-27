@@ -18,8 +18,6 @@
 import sys
 import clang.cindex
 
-print(sys.argv)
-
 index = clang.cindex.Index.create()
 tu = index.parse(sys.argv[1])
 
