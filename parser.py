@@ -18,20 +18,6 @@
 import sys
 import clang.cindex
 
-index = clang.cindex.Index.create()
-tu = index.parse(sys.argv[1])
-
-
-# === EXPERIMENT ===
-#
-# Iterate over the file contents linearly. 
-# Store each comment block together with the token that it refers to.
-# Notice that the token stored is most likely only a subset of the element that
-# is described. The entire element will be extracted during the recursive 
-# traversal that follows.
-#
-
-comments = []
 class Comment:
     def __init__(self):
         self.comment_block = None    # The comment block in question
@@ -43,51 +29,71 @@ class Comment:
     def __str__(self):
         return "'" + self.comment_block + "' at " + str(self.sub_location)
 
-previous_token = None
-comment_block = None
-for token in tu.get_tokens(extent=tu.cursor.extent):
-    if token.kind == clang.cindex.TokenKind.COMMENT:
-        if comment_block:
-            comment_block += "\n" + token.spelling
-        else:
-            comment_block = token.spelling
-    else: # Not a comment
-        if comment_block:
-            comment = Comment()
-            comment.comment_block = comment_block
+def is_start_of_comment_block(c):
+    comment = c.strip()
+    starts = ['/**', '/*!', '/*<', '///', '//!', '//<']
+    for s in starts:
+        if comment.startswith(s):
+            return True
+    return False
+
+def is_back_reference_comment(c):
+    # Assumes that it is a comment start
+    
+    comment = c.strip()
+    starts = ['/*<', '//<']
+    for s in starts:
+        if comment.startswith(s):
+            return True
+    return False
+
+def extract_comments(tu):
+    res = []
+    previous_token = None
+    comment_block = None
+    for token in tu.get_tokens(extent=tu.cursor.extent):
+        if token.kind == clang.cindex.TokenKind.COMMENT:
+            if comment_block:
+                comment_block += "\n" + token.spelling
+            elif is_start_of_comment_block(token.spelling):
+                comment_block = token.spelling
+                
+            # TODO ensure that comment blocks are continous and do not contain empty lines
+        else: # Not a comment
+            if comment_block:
+                comment = Comment()
+                comment.comment_block = comment_block
+                
+                # TODO how to detect and treat freestanding blocks?
+                if is_back_reference_comment(comment.comment_block):
+                    if previous_token:
+                        comment.sub_location = previous_token.location
+                    else:
+                        print("WARNING: comment '" + comment.comment_block + "' does not have anything to reference back to.")
+                else:
+                    comment.sub_location = token.location
+
+                res.append(comment)
+                
+                comment_block = None
             
-            # TODO how to detect and treat freestanding blocks?
-            # TODO how to detect and treat back references?
-            # if should be back referenced
-            #     comment.sub_extent = previous_token.location
-            # else:
-            comment.sub_location = token.location
-            comments.append(comment)
-            
-            comment_block = None
+            previous_token = token
+
+    if comment_block:
+        comment = Comment()
+        comment.comment_block = comment_block
         
-        previous_token = token
+        if is_back_reference_comment(comment.comment_block):
+            if previous_token:
+                comment.sub_location = previous_token.location
+            else:
+                print("WARNING: comment '" + comment.comment_block + "' does not have anything to reference back to.")
+        else:
+            print("WARNING: comment '" + comment.comment_block + "' does not have anything to reference forward to.")
 
-if comment_block:
-    comment = Comment()
-    comment.comment_block = comment_block
-    
-    # TODO what is the block referring to?
-    comment.sub_location = previous_token.location
-    comments.append(comment)
-    
-for c in comments:
-    print(c)
-print("=== end of comments ===")
-
-# Conclusions:
-# - Each block of comments is is extracted.
-# - We have a likely location of a single token in the described element.
-
-# === EXPERIMENT ===
-#
-# Recursive, visitor based, parsing
-#
+        res.append(comment)
+        
+    return res
 
 def comment_from_extent(extent):
     # The extent of a cursor includes the whole element. This means that a 
@@ -129,13 +135,14 @@ def fully_qualified_name(cursor):
     else:
         return "::".join(filter(None, [fully_qualified_name(cursor.semantic_parent), cursor.spelling]))        
 
-def traverse(cursor, indent):
+def traverse(cursor, comments):
     if cursor.kind == clang.cindex.CursorKind.CXX_METHOD:
         c = comment_from_extent(cursor.extent)
         if c:
             c.qualified_name = fully_qualified_name(cursor)
             print("Comment: '" + c.comment_block + "' describes method " + c.qualified_name)
         else:
+            # TODO what to do about undescribed elements?
             print(fully_qualified_name(cursor) + " is not described")
     elif cursor.kind == clang.cindex.CursorKind.CONSTRUCTOR:
         c = comment_from_extent(cursor.extent)
@@ -143,6 +150,7 @@ def traverse(cursor, indent):
             c.qualified_name = fully_qualified_name(cursor)
             print("Comment: '" + c.comment_block + "' describes ctor " + c.qualified_name)
         else:
+            # TODO what to do about undescribed elements?
             print(fully_qualified_name(cursor) + " is not described")
     elif cursor.kind == clang.cindex.CursorKind.CLASS_DECL:
         c = comment_from_extent(cursor.extent)
@@ -150,20 +158,24 @@ def traverse(cursor, indent):
             c.qualified_name = fully_qualified_name(cursor)
             print("Comment: '" + c.comment_block + "' describes class " + c.qualified_name)
         else:
+            # TODO what to do about undescribed elements?
             print(fully_qualified_name(cursor) + " is not described")
     else: # Let's just ignore the rest for now...
         pass
     
-    # TODO
-    # extent
+    # TODO extract these
+    # actual extent
     # access_specifier
     # element spelling
     
+    # TODO what to do about next level parsing, e.g. argument names
+    
     for child in cursor.get_children():
-        traverse(child, indent+1)
+        traverse(child, comments)
 
-traverse(tu.cursor, 0)
+if __name__ == '__main__':
+    index = clang.cindex.Index.create()
+    tu = index.parse(sys.argv[1])
 
-# Conclusions:
-# - Comments can be associated with elements
-# - Further data can be extracted
+    comments = extract_comments(tu)
+    traverse(tu.cursor, comments)
