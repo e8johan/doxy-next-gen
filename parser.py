@@ -26,11 +26,62 @@ tu = index.parse(sys.argv[1])
 
 # === EXPERIMENT ===
 #
-# Iterate over the file contents linearly. Could a state-machine be built from this?
+# Iterate over the file contents linearly. 
+# Store each comment block together with the token that it refers to.
+# Notice that the token stored is most likely only a subset of the element that
+# is described. The entire element will be extracted during the recursive 
+# traversal that follows.
 #
+
+comments = []
+class Comment:
+    def __init__(self):
+        self.comment_block = None    # The comment block in question
+        self.sub_location = None     # The location of a token being referenced, not the entire element, just a token
+        self.extent = None           # The extent of the element being referenced
+        self.element_spelling = None # The text of the element being referenced
+        self.qualified_name = None   # The fully qualified name of the element being referenced
+        self.translation_unit = None # The translation unit (file) of the element being referenced
+        
+    def __str__(self):
+        return "'" + self.comment_block + "' at " + str(self.sub_location)
+
+previous_token = None
+comment_block = None
 for token in tu.get_tokens(extent=tu.cursor.extent):
-    print(str(token.kind) + " / " + str(token.cursor.kind) + ": '" + str(token.spelling) + "' [" + str(token.location) + "]")
+    if token.kind == clang.cindex.TokenKind.COMMENT:
+        if comment_block:
+            comment_block += "\n" + token.spelling
+        else:
+            comment_block = token.spelling
+    else: # Not a comment
+        if comment_block:
+            comment = Comment()
+            comment.comment_block = comment_block
+            
+            # TODO how to detect and treat freestanding blocks?
+            # TODO how to detect and treat back references?
+            # if should be back referenced
+            #     comment.sub_extent = previous_token.location
+            # else:
+            comment.sub_location = token.location
+            comments.append(comment)
+            
+            comment_block = None
+        
+        previous_token = token
+
+if comment_block:
+    comment = Comment()
+    comment.comment_block = comment_block
     
+    # TODO what is the block referring to?
+    comment.sub_location = previous_token.location
+    comments.append(comment)
+    
+for c in comments:
+    print(c)
+
 # Conclusions:
 # - Each block of comments is very easy to extract.
 # - How do we go about extracting the signature of documented elements
