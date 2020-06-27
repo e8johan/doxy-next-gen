@@ -81,11 +81,8 @@ for c in comments:
     print(c)
 
 # Conclusions:
-# - Each block of comments is very easy to extract.
-# - How do we go about extracting the signature of documented elements
-#   - The constructor consists of both CONSTRUCTOR and PARAM_DECL cursor types.
-#   - The functions, CXX_METHOD and PARAM_DECL
-#   - The out-of-class implementation of a function - CXX_METHOD, TYPE_REF, PARAM_DECL
+# - Each block of comments is is extracted.
+# - We have a likely location of a single token in the described element.
 
 # === EXPERIMENT ===
 #
@@ -97,11 +94,10 @@ def fully_qualified_name(cursor):
     elif cursor.kind == clang.cindex.CursorKind.TRANSLATION_UNIT:
         return ""
     else:
-        return "::".join(filter(None, [fully_qualified_name(cursor.semantic_parent), cursor.spelling]))
-        
+        return "::".join(filter(None, [fully_qualified_name(cursor.semantic_parent), cursor.spelling]))        
 
 def traverse(cursor, indent):
-    print(" "*indent + str(cursor.kind) + ": [" + str(cursor.location) + "] ")
+    print(" "*indent + str(cursor.kind) + ": [" + str(cursor.extent) + "] ")
     if cursor.kind == clang.cindex.CursorKind.CXX_METHOD:
         print(" "*(indent+2) + "|- " + cursor.spelling + " " + str(cursor.access_specifier))
         parts = []
