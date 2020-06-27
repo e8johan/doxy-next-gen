@@ -59,7 +59,10 @@ following:
 
 It turns out that the first, linear, approach gives us the comment blocks that 
 we need, while the second, recursive, approach gives us the code structure we 
-need. It seems that the trick will be to merge the two into one data structure.
+need. 
+
+It seems that the trick will be to merge the two into one data structure, which
+is the currently ongoing work.
 
 # Usage
 

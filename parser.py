@@ -39,7 +39,6 @@ class Comment:
         self.extent = None           # The extent of the element being referenced
         self.element_spelling = None # The text of the element being referenced
         self.qualified_name = None   # The fully qualified name of the element being referenced
-        self.translation_unit = None # The translation unit (file) of the element being referenced
         
     def __str__(self):
         return "'" + self.comment_block + "' at " + str(self.sub_location)
@@ -79,6 +78,7 @@ if comment_block:
     
 for c in comments:
     print(c)
+print("=== end of comments ===")
 
 # Conclusions:
 # - Each block of comments is is extracted.
@@ -88,6 +88,39 @@ for c in comments:
 #
 # Recursive, visitor based, parsing
 #
+
+def comment_from_extent(extent):
+    # The extent of a cursor includes the whole element. This means that a 
+    # class declaration contains all comments inside the body.
+    # For this reason, the heusteristics is to pick the earliest comment block
+    # matching, if multiple comment block locations match.
+    
+    res = None
+    for c in comments:
+        after = False
+        before = False
+        
+        if c.sub_location.line > extent.start.line:
+            after = True
+        elif c.sub_location.line == extent.start.line and c.sub_location.column >= extent.start.column:
+            after = True
+            
+        if c.sub_location.line < extent.end.line:
+            before = True
+        elif c.sub_location.line == extent.end.line and c.sub_location.column <= extent.end.column:
+            before = True
+            
+        if after and before:
+            if res:
+                if res.sub_location.line > c.sub_location.line:
+                    res = c
+                elif res.sub_location.line == c.sub_location.line and res.sub_location.column > c.sub_location.column:
+                    res = c
+            else:
+                res = c
+        
+    return res
+
 def fully_qualified_name(cursor):
     if cursor is None:
         return ""
@@ -97,21 +130,40 @@ def fully_qualified_name(cursor):
         return "::".join(filter(None, [fully_qualified_name(cursor.semantic_parent), cursor.spelling]))        
 
 def traverse(cursor, indent):
-    print(" "*indent + str(cursor.kind) + ": [" + str(cursor.extent) + "] ")
     if cursor.kind == clang.cindex.CursorKind.CXX_METHOD:
-        print(" "*(indent+2) + "|- " + cursor.spelling + " " + str(cursor.access_specifier))
-        parts = []
-        for token in tu.get_tokens(extent=cursor.extent):
-            parts.append(token.spelling)
-        print(" "*(indent+2) + "|- " + " ".join(parts))
-        print(" "*(indent+2) + "+- " + fully_qualified_name(cursor))
-
+        c = comment_from_extent(cursor.extent)
+        if c:
+            c.qualified_name = fully_qualified_name(cursor)
+            print("Comment: '" + c.comment_block + "' describes method " + c.qualified_name)
+        else:
+            print(fully_qualified_name(cursor) + " is not described")
+    elif cursor.kind == clang.cindex.CursorKind.CONSTRUCTOR:
+        c = comment_from_extent(cursor.extent)
+        if c:
+            c.qualified_name = fully_qualified_name(cursor)
+            print("Comment: '" + c.comment_block + "' describes ctor " + c.qualified_name)
+        else:
+            print(fully_qualified_name(cursor) + " is not described")
+    elif cursor.kind == clang.cindex.CursorKind.CLASS_DECL:
+        c = comment_from_extent(cursor.extent)
+        if c:
+            c.qualified_name = fully_qualified_name(cursor)
+            print("Comment: '" + c.comment_block + "' describes class " + c.qualified_name)
+        else:
+            print(fully_qualified_name(cursor) + " is not described")
+    else: # Let's just ignore the rest for now...
+        pass
+    
+    # TODO
+    # extent
+    # access_specifier
+    # element spelling
+    
     for child in cursor.get_children():
         traverse(child, indent+1)
 
 traverse(tu.cursor, 0)
 
 # Conclusions:
-# - No comments visited
-# - Can build fully qualified names
-# - Can extract definition / signature (needs polish)
+# - Comments can be associated with elements
+# - Further data can be extracted
