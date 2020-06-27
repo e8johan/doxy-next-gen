@@ -27,7 +27,7 @@ class Comment:
         self.qualified_name = None   # The fully qualified name of the element being referenced
         
     def __str__(self):
-        return "'" + self.comment_block + "' at " + str(self.sub_location)
+        return self.qualified_name + ":\n\n" + str(self.comment_block) + "\n\n---\n"
 
 def is_start_of_comment_block(c):
     comment = c.strip()
@@ -103,27 +103,28 @@ def comment_from_extent(extent):
     
     res = None
     for c in comments:
-        after = False
-        before = False
-        
-        if c.sub_location.line > extent.start.line:
-            after = True
-        elif c.sub_location.line == extent.start.line and c.sub_location.column >= extent.start.column:
-            after = True
+        if c.sub_location:
+            after = False
+            before = False
             
-        if c.sub_location.line < extent.end.line:
-            before = True
-        elif c.sub_location.line == extent.end.line and c.sub_location.column <= extent.end.column:
-            before = True
-            
-        if after and before:
-            if res:
-                if res.sub_location.line > c.sub_location.line:
+            if c.sub_location.line > extent.start.line:
+                after = True
+            elif c.sub_location.line == extent.start.line and c.sub_location.column >= extent.start.column:
+                after = True
+                
+            if c.sub_location.line < extent.end.line:
+                before = True
+            elif c.sub_location.line == extent.end.line and c.sub_location.column <= extent.end.column:
+                before = True
+                
+            if after and before:
+                if res:
+                    if res.sub_location.line > c.sub_location.line:
+                        res = c
+                    elif res.sub_location.line == c.sub_location.line and res.sub_location.column > c.sub_location.column:
+                        res = c
+                else:
                     res = c
-                elif res.sub_location.line == c.sub_location.line and res.sub_location.column > c.sub_location.column:
-                    res = c
-            else:
-                res = c
         
     return res
 
@@ -138,28 +139,25 @@ def fully_qualified_name(cursor):
 def traverse(cursor, comments):
     if cursor.kind == clang.cindex.CursorKind.CXX_METHOD:
         c = comment_from_extent(cursor.extent)
-        if c:
-            c.qualified_name = fully_qualified_name(cursor)
-            print("Comment: '" + c.comment_block + "' describes method " + c.qualified_name)
-        else:
-            # TODO what to do about undescribed elements?
-            print(fully_qualified_name(cursor) + " is not described")
+        if not c:
+            # Add undescribed element to model
+            c = Comment()
+            comments.append(c)
+        c.qualified_name = fully_qualified_name(cursor)
     elif cursor.kind == clang.cindex.CursorKind.CONSTRUCTOR:
         c = comment_from_extent(cursor.extent)
-        if c:
-            c.qualified_name = fully_qualified_name(cursor)
-            print("Comment: '" + c.comment_block + "' describes ctor " + c.qualified_name)
-        else:
-            # TODO what to do about undescribed elements?
-            print(fully_qualified_name(cursor) + " is not described")
+        if not c:
+            # Add undescribed element to model
+            c = Comment()
+            comments.append(c)
+        c.qualified_name = fully_qualified_name(cursor)
     elif cursor.kind == clang.cindex.CursorKind.CLASS_DECL:
         c = comment_from_extent(cursor.extent)
-        if c:
-            c.qualified_name = fully_qualified_name(cursor)
-            print("Comment: '" + c.comment_block + "' describes class " + c.qualified_name)
-        else:
-            # TODO what to do about undescribed elements?
-            print(fully_qualified_name(cursor) + " is not described")
+        if not c:
+            # Add undescribed element to model
+            c = Comment()
+            comments.append(c)
+        c.qualified_name = fully_qualified_name(cursor)
     else: # Let's just ignore the rest for now...
         pass
     
@@ -173,9 +171,15 @@ def traverse(cursor, comments):
     for child in cursor.get_children():
         traverse(child, comments)
 
+# TODO introduce a type for each comment block, e.g. class, namespace, method, constructor, function, enum, type, etc
+# TODO collapse the model, e.g. if an element is found to be undescribed, but is described by an external block, ensure that the Comment items are merged
+
 if __name__ == '__main__':
     index = clang.cindex.Index.create()
     tu = index.parse(sys.argv[1])
 
     comments = extract_comments(tu)
     traverse(tu.cursor, comments)
+    
+    for c in comments:
+        print(str(c))
