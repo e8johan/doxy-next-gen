@@ -54,8 +54,12 @@ These are some interesting links I've picked up along the way:
 The current experiments, described in `parser.py` try to accomplish the 
 following:
 
-* Locate and extract comment blocks.
-* 
+* Visit the tokens in a translation unit (=file) linearly, from top to bottom.
+* Visit the tokens in a translation unit (=file) recursively (which is sort of the same, but different).
+
+It turns out that the first, linear, approach gives us the comment blocks that 
+we need, while the second, recursive, approach gives us the code structure we 
+need. It seems that the trick will be to merge the two into one data structure.
 
 # Usage
 
