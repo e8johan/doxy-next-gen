@@ -20,10 +20,15 @@ import clang.cindex
 
 class Comment:
     def __init__(self):
+        # These parts are required by the parser to find its way around the code
+        
         self.comment_block = None    # The comment block in question
         self.sub_location = None     # The location of a token being referenced, not the entire element, just a token
-        self.element_spelling = None # The text of the element being referenced
         self.qualified_name = None   # The fully qualified name of the element being referenced
+        
+        # TODO The element_ parts should really be more dynamic, as it is only used by the generator
+        
+        self.element_spelling = None # The text of the element being referenced
         self.element_type = None     # The type of the element
         self.element_access = None   # The access specifier of the element
         
