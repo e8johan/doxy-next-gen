@@ -33,10 +33,10 @@ class Comment:
         self.element_access = None   # The access specifier of the element
         
     def __str__(self):
-        res = self.element_type + " " + self.qualified_name
+        res = str(self.element_type) + " " + str(self.qualified_name)
         if self.element_access:
             res += " (" + self.element_access + ")"
-        res += ":\n\n" + str(self.comment_block) + "\n\n" + self.element_spelling + "\n\n---\n"
+        res += ":\n\n" + str(self.comment_block) + "\n\n" + str(self.element_spelling) + "\n\n---\n"
         return res
 
 def is_start_of_comment_block(c):
