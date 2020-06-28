@@ -22,12 +22,17 @@ class Comment:
     def __init__(self):
         self.comment_block = None    # The comment block in question
         self.sub_location = None     # The location of a token being referenced, not the entire element, just a token
-        self.extent = None           # The extent of the element being referenced
         self.element_spelling = None # The text of the element being referenced
         self.qualified_name = None   # The fully qualified name of the element being referenced
+        self.element_type = None     # The type of the element
+        self.element_access = None   # The access specifier of the element
         
     def __str__(self):
-        return self.qualified_name + ":\n\n" + str(self.comment_block) + "\n\n---\n"
+        res = self.qualified_name
+        if self.element_access:
+            res += " (" + self.element_access + ")"
+        res += ":\n\n" + str(self.comment_block) + "\n\n" + self.element_spelling + "\n\n---\n"
+        return res
 
 def is_start_of_comment_block(c):
     comment = c.strip()
@@ -134,7 +139,25 @@ def fully_qualified_name(cursor):
     elif cursor.kind == clang.cindex.CursorKind.TRANSLATION_UNIT:
         return ""
     else:
-        return "::".join(filter(None, [fully_qualified_name(cursor.semantic_parent), cursor.spelling]))        
+        return "::".join(filter(None, [fully_qualified_name(cursor.semantic_parent), cursor.spelling]))
+    
+def access_from_specifier(specifier):
+    if specifier == clang.cindex.AccessSpecifier.PUBLIC:
+        return "public"
+    elif specifier == clang.cindex.AccessSpecifier.PROTECTED:
+        return "protected"
+    elif specifier == clang.cindex.AccessSpecifier.PRIVATE:
+        return "private"
+    else:
+        return None
+
+def spelling_from_extent(extent):
+    # TODO this one includes waaaaay too much
+    
+    parts = []
+    for token in tu.get_tokens(extent=extent):
+        parts.append(token.spelling)
+    return " ".join(parts)
 
 def traverse(cursor, comments):
     if cursor.kind == clang.cindex.CursorKind.CXX_METHOD:
@@ -143,35 +166,36 @@ def traverse(cursor, comments):
             # Add undescribed element to model
             c = Comment()
             comments.append(c)
+        c.element_type = "method"
         c.qualified_name = fully_qualified_name(cursor)
+        c.element_access = access_from_specifier(cursor.access_specifier)
+        c.element_spelling = spelling_from_extent(cursor.extent)
     elif cursor.kind == clang.cindex.CursorKind.CONSTRUCTOR:
         c = comment_from_extent(cursor.extent)
         if not c:
             # Add undescribed element to model
             c = Comment()
             comments.append(c)
+        c.element_type = "constructor"
         c.qualified_name = fully_qualified_name(cursor)
+        c.element_spelling = spelling_from_extent(cursor.extent)
     elif cursor.kind == clang.cindex.CursorKind.CLASS_DECL:
         c = comment_from_extent(cursor.extent)
         if not c:
             # Add undescribed element to model
             c = Comment()
             comments.append(c)
+        c.element_type = "class"
         c.qualified_name = fully_qualified_name(cursor)
+        c.element_spelling = spelling_from_extent(cursor.extent)
     else: # Let's just ignore the rest for now...
         pass
-    
-    # TODO extract these
-    # actual extent
-    # access_specifier
-    # element spelling
-    
+        
     # TODO what to do about next level parsing, e.g. argument names
     
     for child in cursor.get_children():
         traverse(child, comments)
 
-# TODO introduce a type for each comment block, e.g. class, namespace, method, constructor, function, enum, type, etc
 # TODO collapse the model, e.g. if an element is found to be undescribed, but is described by an external block, ensure that the Comment items are merged
 
 if __name__ == '__main__':
